@@ -65,6 +65,9 @@ def dt_fmt(t):
     
 def none2null(x):
     return "null" if (x is None or x == np.nan) else x
+    
+def safeurl(url):
+    return url.replace("<", "&lt;").replace(">", "&gt;")
 
 _robots_response = """User-agent: *
 Disallow: /
@@ -107,7 +110,7 @@ class Handler(WPHandler):
         request = service.findRequest(rid)
         if request is None:
             self.redirect(f"/service/{service_name}")
-                
+        
         return self.render_to_response("request.html", service = service, request=request)
 
        
@@ -267,6 +270,9 @@ class Handler(WPHandler):
         return out_dict
         
     def server_stats(self, req, relpath, window="day", t0=None, t1=None, columns="", **args):
+        
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
 
         port = relpath
         if not port:
@@ -290,6 +296,8 @@ class Handler(WPHandler):
         return json.dumps(out), "text/json"
         
     def server_charts(self, request, relpath, window="day", **args):
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
         
         port = int(relpath)
         server = self.App.Proxy.Servers[port]
@@ -299,6 +307,8 @@ class Handler(WPHandler):
         
         
     def service_stats(self, req, relpath, window="day", t0=None, t1=None, columns="", **args):
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
 
         service=relpath
         if not service:
@@ -319,14 +329,20 @@ class Handler(WPHandler):
         
     def service_charts(self, req, relpath, window="day", **args):
         #print args
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
         service = relpath
         service = self.App.Proxy.Services[service]
         return self.render_to_response("service_charts2.html", service=service, window=window)
         
     def dashboard(self, req, relpath, window="day", **args):
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
         return self.render_to_response("dashboard.html", window=window)
         
     def paths(self, req, relpath, window="day", columns="", **args):
+        if window not in ["week", "day", "hour", "minute"]:
+            window = "day"
         if not columns:
             return "Some columns must be specified", 400
             
@@ -395,6 +411,7 @@ class DataProxyWebInterface(WPApp):
                         ("pretty_time", pretty_time),
                         ("pretty_frequency", pretty_frequency),
                         ("host_port", host_port),
+                        ("safeurl", safeurl),
                         ("time_delta", time_delta),
                         ("dt_fmt", dt_fmt),
                         ("none2null", none2null)

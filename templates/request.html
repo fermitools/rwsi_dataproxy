@@ -31,10 +31,10 @@
             <th>URI:</th>
             <td>
                     {%- if request.HTTPRequest.OriginalURI and request.HTTPRequest.OriginalURI != request.HTTPRequest.URI %}
-                        original: <span class=uri>{{request.HTTPRequest.OriginalURI}}</span><br/>
-                        rewritten: <span class=uri>{{request.HTTPRequest.URI}}</span>
+                        original: <span class=uri>{{request.HTTPRequest.OriginalURI|safeurl}}</span><br/>
+                        rewritten: <span class=uri>{{request.HTTPRequest.URI|safeurl}}</span>
                     {% else %}
-                        <span class=uri>{{request.HTTPRequest.URI}}</span>
+                        <span class=uri>{{request.HTTPRequest.URI|safeurl}}</span>
                     {% endif %}
             </td>
         </tr>

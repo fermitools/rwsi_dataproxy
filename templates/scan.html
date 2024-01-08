@@ -23,7 +23,7 @@
     {% for uri, signal in scan.URISamples %}
         <tr>
             <td>{{"%.3f"|format(signal)}}</td>
-            <td>{{uri}}</td>
+            <td>{{uri|safeurl}}</td>
         </tr>
     {% endfor %}
 </table>

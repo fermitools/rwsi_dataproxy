@@ -242,10 +242,12 @@ class Service(Primitive, Logged):
         http_request = request.HTTPRequest
         
         match_with_slash = self.Match if self.Match.endswith('/') else self.Match + "/"
-        match = \
-            http_request.Path == self.Match \
-            or http_request.Path.startswith(match_with_slash) \
-            or fnmatch.fnmatch(http_request.Path, self.Match)
+        match = http_request.Path != self.Probe \
+            and ( 
+                http_request.Path == self.Match 
+                or http_request.Path.startswith(match_with_slash) 
+                or fnmatch.fnmatch(http_request.Path, self.Match)
+           )
         
         if not match:  return False
         

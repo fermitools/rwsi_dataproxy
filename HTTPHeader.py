@@ -92,10 +92,17 @@ class HTTPHeader(object):
 
     def forceConnectionClose(self):
         self.Headers["Connection"] = "close"
+        
+    SAFE_HEADERS = [x.lower() for x in 
+        "host,Cache-Control,Connection,Accept,Accept-Encoding,Accept-Language,Content-type,length,user-agent".split(",")
+    ]
 
-    def headersAsText(self):
+    def headersAsText(self, sanitize=True):
         headers = []
         for k, v in self.Headers.items():
+            if sanitize:
+                if k.lower() not in self.SAFE_HEADERS:
+                    v = "(hidden)"
             if isinstance(v, list):
                 for vv in v:
                     headers.append("%s: %s" % (k, vv))
@@ -109,8 +116,8 @@ class HTTPHeader(object):
         else:
             return "%s %s %s" % (self.Protocol, self.StatusCode, self.StatusMessage)
 
-    def as_text(self, original=False):
-        return "%s\r\n%s" % (self.headline(original), self.headersAsText())
+    def as_text(self, original=False, sanitize=True):
+        return "%s\r\n%s" % (self.headline(original), self.headersAsText(sanitize=sanitize))
 
-    def as_bytes(self, original=False):
-        return to_bytes(self.as_text(original))
+    def as_bytes(self, original=False, sanitize=False):
+        return to_bytes(self.as_text(original=original, sanitize=sanitize))

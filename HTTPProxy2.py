@@ -109,7 +109,7 @@ class HTTPPeer(PyThread, Logged):
                     ndata = 0
                     if isinstance(item, HTTPHeader):
                         self.Proxy.headerReceived(item)
-                        forward = item.as_bytes() + b"\r\n"
+                        forward = item.as_bytes(sanitize=False) + b"\r\n"
                     else:
                         ndata = len(item)
                         #self.debug("received %d bytes of data" % (ndata,))
@@ -210,7 +210,7 @@ class HTTPProxy(Primitive, Logged):
                 assert self.HTTPRequest.is_client()
                 self.headerReceived(self.HTTPRequest)
                 try:
-                    data = self.HTTPRequest.as_bytes() + b"\r\n" 
+                    data = self.HTTPRequest.as_bytes(sanitize=False) + b"\r\n" 
                     #self.debug("->s: [%s]" % to_str(data))
                     #self.debug("sending buffered request to server: [%s]" % data)
                     self.SSock.sendall(data)
