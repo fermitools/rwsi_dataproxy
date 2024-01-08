@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Scanner Detector</h2>
+
+<p>Fraction of requests tested: {{detector.SamplingFraction}}</p>
+
+<table>
+    <tr>
+        <th rowspan=2>Server Port</th>
+        <th rowspan=1 colspan=5>Scans</th>
+    </tr>
+    <tr>
+        <th>Scanner Address</th>
+        <th>Start time</th>
+        <th>End time</th>
+        <th>Requests (estimated)</th>
+        <th>Frequency, Hz (estimated)</th>
+    </tr>
+    {% for s, scans in data %}
+        {% set nscans = scans|length %}
+        {% for scan in scans %}
+            <tr>
+                {% if loop.first %}
+                    <td rowspan={{nscans}}>{{s.Port}}</td>
+                {% endif %}
+
+                {% if not scan is none %}
+                    <td>{{scan.IPAddress}} ({{dns[scan.IPAddress]}})</td>
+                    <td><a href="./scan?port={{s.Port}}&start={{scan.TStart}}">{{scan.TStart|dt_fmt}}</a></td>
+                    <td>{{scan.TEnd|dt_fmt}}</td>
+                    <td>{{scan.estimated_requests}}</td>
+                    <td>{{"%.3e"|format(scan.frequency)}}<br/>
+                {% else %}
+                    <td colspan=5></td>
+                {% endif %}
+            </tr>
+        {% endfor %}
+    {% endfor %}
+
+{% endblock %}

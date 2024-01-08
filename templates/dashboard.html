@@ -1,0 +1,468 @@
+{% extends 'base.html' %}
+
+{% block extra_head %}
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript" src="/static/charts.js"></script>
+
+<style type="text/css">
+    td.chart {
+        height:300px;
+        width:800px;
+        text-align:center;
+        vertical-align:middle;
+        border: solid 1px #EAEAEA;
+        #background: #E8E8E8;
+        padding: 5px;
+        }
+    td.chart_title {
+        padding-top: 20px;
+        text-align:left;
+        vertical-align:top;
+        font-weight: bold;
+    }
+    span.tooltip {
+        font-family: arial;
+        font-size: 9px;
+    }
+</style>
+
+{% endblock %}
+
+{% block contents %}
+
+<h2>Data Flow</h2>
+
+<form method="get" action="">
+    Time window: <select name="window" onchange="this.form.submit()">
+        <option value="minute" {{'selected=selected' if window=='minute'}}>minute</option>
+        <option value="hour" {{'selected=selected' if window=='hour'}}>hour</option>
+        <option value="day" {{'selected=selected' if window=='day' or not window}}>day</option>
+        <option value="week" {{'selected=selected' if window=='week'}}>week</option>
+    <select>
+</form>
+
+<p style="white-space:pre">Filter by: port: <select id="port_filter" onchange="javascript:apply_filters()">
+    </select>    service: <select id="service_filter" onchange="javascript:apply_filters()"></select>
+</p>
+
+<table class=formatting id="charts"></table>
+
+<script type="text/javascript">
+
+    //-------------------------
+    // Request frequencies
+
+    google.charts.load('current', {'packages':['corechart', 'sankey']});
+    var url_head = "/paths?window={{window}}";
+    
+    var request = null;
+    var get_data_url = null;
+    var charts = {};
+    var current_data = null;
+    var all_columns = [];
+    
+    function units(value, data_type)
+    {
+        tooltip = value;
+        if( data_type == "B" )
+        {
+            if( value > 1024*1024*0.8 )
+                tooltip = "" + Math.round(value/1000.0)/1000.0 + " MB";
+            else if ( value > 1024*0.8 )
+                tooltip = "" + value/1000.0 + " KB";
+            else
+                tooltip = "" + value + " B";
+        }
+        else
+        {
+            if( value > 1000000 )
+                tooltip = "" + Math.round(value/1000.0)/1000.0 + "M";
+            else if ( value > 1000 )
+                tooltip = "" + value/1000.0 + "K";
+            else
+                tooltip = value;
+        }
+        return tooltip;
+    }
+
+    function unpack_label(key)
+    {
+        var label = key.split("[")[1].split("]")[0];
+        var name = key.split("[")[0];
+        var words = label.split("/");
+        var port = words[0];
+        var server_error = words[1]
+        var svc = words[2];
+        var service_error = words[3]
+        var worker = words[4];
+        var http_status = words[5];
+        return {
+            port: port,
+            server_error: server_error,
+            service: svc,
+            service_error: service_error,
+            worker: worker,
+            http_status: http_status,
+            name: name,
+        };
+    }
+    
+    function compile_lists(data)
+    {
+        var all_services = {};
+        var all_ports = {};
+        var all_http_status = {};
+
+        for( row_key in data.data )
+        {
+            var unpacked = this.unpack_label(row_key);
+            var port = unpacked.port;
+            var svc = unpacked.service;
+            var name = unpacked.name;
+            var value = data.data[row_key];
+            var status = unpacked.http_status;
+
+            all_ports[port] = 1;
+            all_services[svc] = 1;
+            all_http_status[status] = 1;
+        }
+        all_ports = Object.keys(all_ports);
+        all_services = Object.keys(all_services);
+        all_http_status = Object.keys(all_http_status);
+        all_ports.sort();
+        all_services.sort();
+        all_http_status.sort();
+        return {
+            ports: all_ports,
+            services: all_services,
+            http_status: all_http_status
+        }            
+    }
+
+    function sankey_formatter(field_name, data_type)
+    {
+        this.field_name = field_name;
+        this.format_data = function(data, filter)
+        {
+            var cols = [
+                {"id":"From", "label":"From", "type":"string"},
+                {"id":"To", "label":"To", "type":"string"},
+                {"id":"Weight", "label":"Weight", "type":"number"},
+                {"role":"tooltip", "type":"string"},
+                {"role":"style", "type":"string"}
+            ];
+        
+            var port_service = {};
+            var service_worker = {};
+            var worker_http_status = {};
+            var max_flow = 0;
+
+            for( row_key in data.data )
+            {
+                var unpacked = unpack_label(row_key);
+                var name = unpacked.name;
+                if( name == this.field_name && value > 0 )
+                {
+                    var value = data.data[row_key];
+                    var port = unpacked.port;
+                    var svc = unpacked.service;
+                    var status = unpacked.http_status;
+                    if (svc == "")
+                    {
+                        svc = "(" + unpacked.server_error + ")";
+                        worker = "(n/a)";
+                    }
+
+                    if( filter != null )
+                    {
+                        if( filter.service != null && svc != filter.service )
+                            continue;
+                        if( filter.port != null && port != filter.port )
+                            continue;
+                        if( filter.http_status != null && status != filter.http_status )
+                            continue;
+                    }
+                    if( value > max_flow )
+                        max_flow = value;
+                }
+            }
+
+            var rows = [];
+            var threshold = max_flow/100.0;
+
+            for( row_key in data.data )
+            {
+                var unpacked = unpack_label(row_key);
+                
+                if( unpacked.name == this.field_name )
+                {
+                    var port = unpacked.port;
+                    var svc = unpacked.service;
+                    var name = unpacked.name;
+                    var worker = unpacked.worker;
+                    var http_status = unpacked.http_status;
+                    if (svc == "")
+                    {
+                        svc = "(" + unpacked.server_error + ")";
+                        worker = "(n/a)";
+                    }
+                    else if( worker == "" )
+                    {
+                        if( unpacked.service_error != "" )
+                            worker = "(" + unpacked.service_error + ")";
+                        else
+                            worker = "(n/a)"
+                    }
+
+                    if( filter != null )
+                    {
+                        if( filter.service != null && svc != filter.service )
+                            continue;
+                        if( filter.port != null && port != filter.port )
+                            continue;
+                        if( filter.http_status != null && status != filter.http_status )
+                            continue;
+                    }
+
+                    var value = data.data[row_key];
+                    if( value > threshold )
+                    {
+                        var x = port_service[port+" "+svc];
+                        if ( x == null ) x = 0;
+                        x += value;
+                        port_service[port+" "+svc] = x;
+
+                        x = service_worker[svc+" "+worker];
+                        if ( x == null ) x = 0;
+                        x += value;
+                        service_worker[svc+" "+worker] = x;
+
+                        x = worker_http_status[worker+" "+http_status];
+                        if ( x == null ) x = 0;
+                        x += value;
+                        worker_http_status[worker+" "+http_status] = x;
+                    }
+                }
+            }
+
+            for( key in port_service )
+            {
+                var value = port_service[key];
+                var words = key.split(" ");
+                var port = words[0];
+                var svc = words[1];
+                var tooltip = units(value, data_type);
+                tooltip = '<span class="tooltip">' + tooltip + '</span>';
+                rows.push([port, svc, value, tooltip, null]);
+            }
+            
+            for( key in service_worker )
+            {
+                var value = service_worker[key];
+                var words = key.split(" ");
+                var svc = words[0];
+                var worker = words[1];
+                var style = null;
+                if( worker == "(n/a)" || worker == "" )
+                    style = "opacity:0.1; fill-opacity:0.1";
+                var tooltip = units(value, data_type);
+                tooltip = '<span class="tooltip">' + tooltip + '</span>';
+                rows.push([svc, worker, value, tooltip, style]);
+            }
+
+            for( key in worker_http_status )
+            {
+                var value = worker_http_status[key];
+                var words = key.split(" ");
+                var worker = words[0];
+                var http_status = words[1];
+                var style = null;
+                if( http_status == "" )
+                    style = "opacity:0.1; fill-opacity:0.1";
+                var tooltip = units(value, data_type);
+                tooltip = '<span class="tooltip">' + tooltip + '</span>';
+                rows.push([worker, http_status, value, tooltip, style]);
+            }
+            
+            // format the data table
+            var dt = new google.visualization.DataTable(
+                {
+                    "cols": cols, 
+                    "rows": []
+                }
+            );
+        
+            dt.addRows(rows);
+            return dt;
+        }    
+    }
+
+    function sankey_chart(element, options, formatter)
+    {
+        this.options = options;
+        this.formatter = formatter;
+        this.data = null;
+    
+        this.chart_object = new google.visualization.Sankey(document.getElementById(element));
+    
+        this.query_columns = function()
+        {
+            return this.formatter.columns;
+        }
+    
+        this.data_received = function(data, filters)
+        {
+            this.data = data;
+            var t0 = data.minT;
+            var t1 = data.maxT;
+            var dt = this.formatter.format_data(data, filters);
+            this.chart_object.draw(dt, this.options);
+        }
+
+        this.redraw = function(filters)
+        {
+            var dt = this.formatter.format_data(this.data, filters);
+            this.chart_object.draw(dt, this.options);
+        }
+
+        return this;
+    }
+    
+    function add_chart_row(table, chid, title)
+    {
+        var tr = document.createElement("tr");
+        table.appendChild(tr);
+    
+        var td0 = document.createElement("td");
+        td0.setAttribute("class", "chart_title");
+        td0.innerHTML = title;
+        tr.appendChild(td0);
+
+        tr = document.createElement("tr");
+        table.appendChild(tr);
+        var td1 = document.createElement("td");
+        td1.setAttribute("class", "chart");
+        td1.id=chid;
+        td1.innerHTML = '<img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>';
+        tr.appendChild(td1);
+    }
+    
+    function add_sankey(table, chid, title, options, column, data_type)
+    {
+        add_chart_row(table, chid, title);
+        var field_name = column.split("[")[0];
+        var chart = new sankey_chart(chid, options, new sankey_formatter(field_name, data_type));
+        all_columns.push(column);
+        charts[chid] = chart;
+    }
+    
+    function init_charts()
+    {
+        var options = {
+            sankey: { 
+                node: { width: 6 },
+                link: {
+                          colorMode: 'gradient'
+                }
+            },
+            tooltip: { isHtml: true },
+            width:800
+        };
+        var table = document.getElementById("charts");
+        add_sankey(table, "by_bytes", "Bytes transferred",
+            options,
+            "path.bytes[*]/sum", "B"
+        );
+    
+        add_sankey(table, "by_request", "Request count",
+            options,
+            "path.requests[*]/sum", "int"
+        );
+
+        get_data_url = url_head + "&columns=" + all_columns.join(",");
+        get_data();
+        var interval = 
+            {%- if window == "day" %}5*60*1000
+            {%- elif window == "hour" %}10*1000
+            {%- else %}3600*1000
+            {%- endif %};
+        setInterval(get_data, interval);
+    }
+        
+    function populate_pulldown(selid, options)
+    {
+        var sel = document.getElementById(selid);
+        var inx = sel.selectedIndex;
+        var selected = null;
+        if( inx >= 0 )
+            selected = sel[inx].value;
+        sel.innerHTML = '<option value="">(all)</option>';
+        var lst = [];
+        inx = 0;
+        var i = 1;
+        for( v of options )
+        {
+            var o = document.createElement("option");
+            o.setAttribute("value", v);
+            o.innerHTML = v;
+            sel.appendChild(o);
+            if( v == selected )
+                inx = i;
+            i++;
+        }
+        sel.selectedIndex = inx;
+    }
+    
+    function read_select(sel_id)
+    {
+        var sel = document.getElementById(sel_id);
+        var i = sel.selectedIndex;
+        if( i < 0 )
+            return null;
+        var v = sel[i].value;
+        if( v == '' )   v = null;
+        return v;
+    }
+        
+    function read_filters(port_sel_id, server_sel_id)
+    {
+        return {
+            "service":   read_select(server_sel_id),
+            "port":      read_select(port_sel_id)
+        };
+    }
+    
+    function apply_filters()
+    {
+        var filters = read_filters("port_filter", "service_filter");
+        for( chid in charts )
+            charts[chid].redraw(filters);
+    }
+    
+    function get_data()
+    {   
+        request = XMLRequest(get_data_url, {
+                data_received: function(data)
+                {
+                    var filters = read_filters("port_filter", "service_filter");
+                    current_data = data;
+                    var lists = compile_lists(current_data);
+                    populate_pulldown("port_filter", lists.ports);
+                    populate_pulldown("service_filter", lists.services);
+                    for( chid in charts )
+                    {
+                        charts[chid].data_received(current_data, filters);
+                    }
+                }
+            }
+        );
+        
+    }
+    
+    google.charts.setOnLoadCallback(init_charts);
+
+
+</script>
+    
+{% endblock %}
+

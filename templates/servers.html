@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Servers</h2>
+
+<table>
+    <tr>
+        <th rowspan=2>Port</th>
+        <th rowspan=2>Access</th>
+        <th colspan=3>Request frequencies</th>
+        <th rowspan=2>Services</th>
+        <th colspan=3>Request frequencies</th>
+    </tr>
+    <tr>
+        <th class=left>10s</th><th class=none>3m</th><th class=right>1h</th>
+        <th class=left>10s</th><th class=none>3m</th><th class=right>1h</th>
+    </tr>
+    
+    {% for s in servers %}
+        {% set n = s.ServicesList|length %}
+        {% for svc in s.ServicesList %}
+            <tr>
+                {% if loop.first %}
+                    <td rowspan="{{n}}"><a href="/server_charts/{{s.Port}}">{{s.Port}}</a>{{ " (ssl)" if s.TLS }}</td>
+                    <td rowspan="{{n}}">
+                            {% for iaddr, access in s.Access.rules_as_text() %}
+                                {{iaddr}}:{{access}}<br/>
+                            {% endfor %}
+                            default:{{"allow" if s.Access.Default else "deny"}}
+                    </td>
+                    {% for t, f in s.requestFrequencies() -%}
+                        <td rowspan="{{n}}">{{- f|pretty_frequency }}</td>
+                    {%- endfor -%}
+                {% endif %}
+                <td>
+                    <a href="/service/{{svc.ServiceName}}">{{svc.ServiceName}}</a>
+                </td>
+                {% for t, f in s.requestFrequencies(svc.ServiceName) %}
+                    <td>{{ f|pretty_frequency }}</td>
+                {%- endfor -%}
+            </tr>
+        {% endfor %}
+    {% endfor %}
+</table>
+
+{% endblock %}

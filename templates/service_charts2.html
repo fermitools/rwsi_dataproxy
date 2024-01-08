@@ -1,0 +1,280 @@
+{% extends 'base.html' %}
+
+{% block extra_head %}
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript" src="/static/charts.js"></script>
+
+<style type="text/css">
+    td.chart {
+        height:200px;
+        width:800px;
+        text-align:center;
+        vertical-align:middle;
+        border: 0;
+        }
+</style>
+
+{% endblock %}
+
+{% block contents %}
+
+<h2>Service {{service.ServiceName}} charts</h2>
+
+<p><a href="/service/{{service.ServiceName}}">&lt;&lt; service</a></p>
+
+
+<form method="get" action="">
+    Time window: <select name="window" onchange="this.form.submit()">
+        <option value="hour" {{'selected=selected' if window=='hour'}}>hour</option>
+        <option value="day" {{'selected=selected' if window=='day' or not window}}>day</option>
+        <option value="week" {{'selected=selected' if window=='week'}}>week</option>
+    <select>
+</form>
+
+<table class=formatting id="charts">
+{#
+    <tr>
+        <td class=chart id="frequencies_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+    <tr>
+        <td class=chart id="process_times_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+    <tr>
+        <td class=chart id="wait_times_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+    <tr>
+        <td class=chart id="queues_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+    <tr>
+        <td class=chart id="counts_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+    <tr>
+        <td class=chart id="status_count_chart">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+#}
+</table>     
+
+{#
+<table class=formatting id="charts">
+{% for sname in services %}
+    <tr>
+        <td class=chart id="service_{{sname}}">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+{% endfor %}
+</table>
+#}
+
+
+<script type="text/javascript">
+
+    //-------------------------
+    // Request frequencies
+
+    google.charts.load('current', {'packages':['corechart']});    
+    var url_head = "/service_stats/{{service.ServiceName}}?window={{window}}";
+    
+    var request = null;
+    
+    var data_url = null;
+    var charts = {};
+    var current_data = null;
+    
+    function add_chart_row(table, chid)
+    {
+        var tr = document.createElement("tr");
+        table.appendChild(tr);
+    
+        var td1 = document.createElement("td");
+        td1.setAttribute("class", "chart");
+        td1.id=chid;
+        td1.innerHTML = '<img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>';
+        tr.appendChild(td1);
+    
+        var td2 = document.createElement("td");
+        var chk = document.createElement("input");
+        chk.setAttribute("type","checkbox");
+        chk.id = "logscale_toggle:"+chid;
+        chk.setAttribute("onchange", "javascript:logscale_toggle(this)");
+        td2.appendChild(chk);
+        td2.insertAdjacentText("beforeend", "log scale");
+        tr.appendChild(td2);                
+    }
+
+    function logscale_toggle(checkbox) {
+        var my_id = checkbox.id;
+        var words = my_id.split("logscale_toggle:");
+        var chid = words[1];
+        var c = charts[chid];
+        var logscale = !c.options.vAxis.logScale;
+        c.options.vAxis.logScale = logscale;
+        checkbox.checked = logscale && true;
+        c.data_received(current_data);
+    }
+    
+    function add_chart(table, chid, options, formatter, stepped)
+    {
+        add_chart_row(table, chid);
+        options.vAxis.logScale = false;
+        charts[chid] = new chart(chid, options, formatter, stepped);
+    }
+    
+    function init_charts()
+    {
+        var table = document.getElementById("charts");
+        //-------------------------
+        // Frequencies time
+        add_chart(table, "frequencies_chart", 
+                {
+                    title:"Request frequency",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{logScale:false, title:"Requests/second"}
+                },
+                new formatter_by_name(
+                    {
+                        "request.incoming[]/frequency":"incoming",
+                        "request.rejected[]/frequency":"rejected"
+                    }
+                ),
+                "stepped"
+        );
+        //-------------------------
+        // Processing time
+        add_chart(table, "process_times_chart", 
+                {
+                    title:"Request processing time",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{logScale:false, title:"seconds"}, 
+                    series:[
+                        {color:"blue", lineWidth:1.5},
+                        {color:"green"}
+                        ]
+                }, 
+                new formatter_by_name(
+                    {
+                        "process_time[]/mean":"mean",
+                        "process_time[]/max":"max"
+                    }
+                )
+        );
+        //-------------------------
+        // Queue wait time
+        add_chart(table, "wait_times_chart", 
+                {
+                    title:"Queue wait time",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{logScale:false, title:"seconds"}, 
+                    series:[
+                        {color:"black", lineWidth:1.5},
+                        {color:"gray"},
+                        ]
+                }, 
+                new formatter_by_name(
+                    {
+                        "wait_time[]/mean":"mean",
+                        "wait_time[]/max":"max"
+                    }
+                )
+        );
+    
+        //-------------------------
+        // Request counts
+
+        add_chart(table, "queues_chart", 
+                {
+                    title:"Request counts",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{minValue:0.0,
+                            logScale:false}
+                }, 
+                new formatter_by_name(
+                    {
+                        "active_connections[]/mean": "active", 
+                        "queued_connections[]/mean": "queued", 
+                    }
+                )
+        );  
+
+        add_chart(table, "counts_chart", 
+                {
+                    title:"Request counts",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{title:"Requests/second",
+                            logScale:false}
+                },
+                new formatter_by_name(
+                    {
+                        "request.incoming[]/count":"incoming",
+                        "request.rejected[]/count":"rejected"
+                    }
+                ),
+                "stepped"
+            );
+        //-------------------------
+        // Request staus counts
+
+        add_chart(table, "status_count_chart", 
+                {
+                    title:"Request status counts",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{minValue:0.0,
+                            logScale:false},
+                    isStacked: true
+                },
+                new formatter_by_label(
+                    "request.status/count"
+                ),
+                "stepped"
+        );
+        
+        var all_columns = [];
+        for ( chid in charts )
+            all_columns = all_columns.concat( charts[chid].query_columns() );
+        
+        data_url = url_head + "&columns=" + all_columns.join(",");
+        request_data();
+        var interval = 
+            {%- if window == "day" %}5*60*1000
+            {%- elif window == "hour" %}10*1000
+            {%- else %}3600*1000
+            {%- endif %};
+        setInterval(request_data, interval);
+    }
+        
+    
+    function request_data()
+    {   
+        request = XMLRequest(data_url, {
+                data_received: function(data)
+                {
+                    current_data = data;
+                    for( chid in charts )
+                        charts[chid].data_received(data);
+                }
+            });
+    }
+    google.charts.setOnLoadCallback(init_charts);
+    
+
+</script>
+    
+
+{% endblock %}
+
+
+
+
+

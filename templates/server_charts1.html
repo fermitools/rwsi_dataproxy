@@ -1,0 +1,326 @@
+{% extends 'base.html' %}
+
+{% block extra_head %}
+<script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+<script type="text/javascript" src="/static/charts.js"></script>
+
+<style type="text/css">
+    td.chart {
+        height:200px;
+        width:800px;
+        text-align:center;
+        vertical-align:middle;
+        border: 0;
+        }
+</style>
+
+{% endblock %}
+
+{% block contents %}
+
+<h2>Server {{server.Port}}</h2>
+
+<p>
+    <table class="formatting">
+    <tr><th>Access</th>
+        <td>
+            {% for iaddr, access in server.Access.rules_as_text() %}
+                {{iaddr}}:{{access}}<br/>
+            {% endfor %}
+            default:{{"allow" if server.Access.Default else "deny"}}
+        </td>
+    </tr>
+    </table>
+</p>
+
+<form method="get" action="">
+    Time window: <select name="window" onchange="this.form.submit()">
+        <option value="hour" {{'selected=selected' if window=='hour'}}>hour</option>
+        <option value="day" {{'selected=selected' if window=='day' or not window}}>day</option>
+        <option value="week" {{'selected=selected' if window=='week'}}>week</option>
+    <select>
+</form>
+
+<table class=formatting id="charts"></table>
+
+
+
+<script type="text/javascript">
+
+    //-------------------------
+    // Request frequencies
+
+    google.charts.load('current', {'packages':['corechart']});    
+    var url_head = "/server_stats/{{server.Port}}?window={{window}}";
+    
+    var service_names = [
+        {% for sname in services %}{{',' if not loop.first }}"{{sname}}"{% endfor %}
+    ];
+    
+    var request = null;
+    var get_data_url = null;
+    var charts = {};
+    var current_data = null;
+    
+    function add_chart_row(table, chid)
+    {
+        var tr = document.createElement("tr");
+        table.appendChild(tr);
+    
+        var td1 = document.createElement("td");
+        td1.setAttribute("class", "chart");
+        td1.id=chid;
+        td1.innerHTML = '<img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>';
+        tr.appendChild(td1);
+    
+        var td2 = document.createElement("td");
+        var chk = document.createElement("input");
+        chk.setAttribute("type","checkbox");
+        chk.id = "logscale_toggle:"+chid;
+        chk.setAttribute("onchange", "javascript:logscale_toggle(this)");
+        td2.appendChild(chk);
+        td2.insertAdjacentText("beforeend", "log scale");
+        tr.appendChild(td2);                
+    }
+    
+    function add_chart(table, chid, options, formatter, stepped)
+    {
+        add_chart_row(table, chid);
+        options.vAxis.logScale = false;
+        charts[chid] = new chart(chid, options, formatter, stepped);
+    }
+    
+    function add_divider(table, html)
+    {
+        var tr = document.createElement("tr");
+        table.appendChild(tr);
+    
+        var td1 = document.createElement("td");
+        td1.setAttribute("colspan", "2");
+        td1.innerHTML = html;
+        tr.appendChild(td1);
+    }
+
+    function logscale_toggle(checkbox) {
+        var my_id = checkbox.id;
+        var words = my_id.split("logscale_toggle:");
+        var chid = words[1];
+        var c = charts[chid];
+        var logscale = !c.options.vAxis.logScale;
+        c.options.vAxis.logScale = logscale;
+        checkbox.checked = logscale && true;
+        c.data_received(current_data);
+    }
+    
+    function init_charts()
+    {
+        var table = document.getElementById("charts");
+        add_chart(table, "connections_chart",
+            {   // Google Charts options
+                title:"Connection frequency",
+                width:800, lineWidth:1, legend:{position:"top"},
+                vAxis:{logScale:false, title:"Connections/second"}
+            },
+            new formatter_by_name(                
+                {
+                    "status.server.connected[+]/frequency":  "connections" 
+                }
+            )
+        );
+        
+        add_chart(table, "timing_chart",
+            {   // Google Charts options
+                title:"Request pre-processing times (average)",
+                width:800, lineWidth:1, legend:{position:"top"},
+                //isStacked: true,
+                series:[
+                    {color:"blue"},
+                    {color:"red"},
+                    {color:"green"},
+                ],
+                vAxis:{title:"Seconds"}
+            },
+            new formatter_by_name(                
+                {
+                    "request.time.wait[]/average":  "Wait",
+                    "request.time.ssl[]/average":  "SSL handshake",
+                    "request.time.read[]/average":  "Read"
+                }
+            )
+        );
+
+        add_chart(table, "queue_state_chart",
+            {   // Google Charts options
+                title:"Queue counts",
+                width:800, lineWidth:1, legend:{position:"top"},
+                //isStacked: true,
+                series:[
+                    {color:"green", lineWidth:1.5},
+                    {color:"green"},
+                    {color:"blue", lineWidth:1.5},
+                    {color:"blue"}
+                ],
+                vAxis:{title:"Seconds"}
+            },
+            new formatter_by_name(                
+                {
+                    "queue.active[]/average":  "active (average)",
+                    "queue.active[]/max":  "active (max)",
+                    "queue.waiting[]/average":  "queued (average)",
+                    "queue.waiting[]/max":  "queued (max)"
+                }
+            )
+        );
+
+        add_chart(table, "request_status_f_chart",
+            {   // Google Charts options
+                title:"Request status frequencies",
+                width:800, lineWidth:1, legend:{position:"top"},
+                isStacked: true,
+                series:[
+                    {color:"blue"},
+                    {color:"black"},
+                    {color:"red"},
+                    {color:"green"},
+                ],
+                vAxis:{logScale:false, title:"Requests/second"}
+            },
+            new formatter_by_name(                
+                {
+                    "status.server.rejected[+]/flow":  "full", 
+                    "status.server.denied[+]/flow":  "denied",
+                    "status.server.nomatch[+]/flow":  "unmatched",
+                    "status.server.dispatched[+]/flow":  "dispatched"
+                }
+            ),
+            "stepped"
+        );
+
+        add_chart(table, "request_status_c_chart",
+            {   // Google Charts options
+                title:"Request status counts",
+                width:800, lineWidth:1, legend:{position:"top"},
+                isStacked: true,
+                series:[
+                    {color:"blue"},
+                    {color:"black"},
+                    {color:"red"},
+                    {color:"green"},
+                ],
+                vAxis:{logScale:false, title:"Requests per bin"}
+            },
+            new formatter_by_name(                
+                {
+                    "status.server.rejected[+]/sum":  "full", 
+                    "status.server.denied[+]/sum":  "denied",
+                    "status.server.nomatch[+]/sum":  "unmatched",
+                    "status.server.dispatched[+]/sum":  "dispatched"
+                }
+            ),
+            "stepped"
+        );
+        
+        
+        add_chart(table, "dispatched_to_chart", 
+                {
+                    title:"Request counts by service",
+                    width:800, lineWidth:1, legend:{position:"top"},
+                    vAxis:{
+                            minValue:0.0,
+                            logScale:false
+                    },
+                    areaOpacity:0.0,
+                    isStacked: false
+                },
+                new formatter_by_label(
+                    "status.service/count"
+                ),
+                "stepped"
+        );
+        
+        var all_columns = {};
+        
+        for( var chid in charts )
+        {
+            var ch = charts[chid];
+            for( var cn of ch.query_columns() )
+                all_columns[cn] = 1;
+        }
+
+        get_data_url = url_head + "&columns=" + Object.keys(all_columns).join(",");
+        get_data();
+        var interval = 
+            {%- if window == "day" %}5*60*1000
+            {%- elif window == "hour" %}10*1000
+            {%- else %}3600*1000
+            {%- endif %};
+        setInterval(get_data, interval);
+    }
+        
+    function get_data()
+    {   
+        request = XMLRequest(get_data_url, {
+                data_received: function(data)
+                {
+                    current_data = data;
+                    for( chid in charts )
+                        charts[chid].data_received(current_data);
+                }
+            }
+        );
+        
+    }
+    
+    google.charts.setOnLoadCallback(init_charts);
+    
+    var logscale_toggle_state = {};
+    
+    //
+    // Create charts table
+    //
+
+
+</script>
+    
+
+    
+{#
+
+<tr>
+    <td class=chart id="connections_chart">
+         <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+    </td>
+    <td><input type="checkbox" id="connections_chart:logscale"
+         onchange="javascript:logscale_toggle('connections_chart')"/>log scale
+    </td>
+    <script type="text/javascript">
+        logscale_toggle_state["connections_chart"]=false;
+    </script>
+</tr>
+<tr>
+    <td class=chart id="timing_chart">
+         <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+    </td>
+</tr>
+<tr>
+    <td class=chart id="request_status_chart">
+         <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+    </td>
+</tr>
+{% for sname in services %}
+    <tr>
+        <td class=chart id="service_{{sname}}">
+             <img style="vertical-align:middle" src="/static/spinning_wheel.gif"/>
+        </td>
+    </tr>
+{% endfor %}
+</table>
+
+#}
+
+{% endblock %}
+
+
+
+
+

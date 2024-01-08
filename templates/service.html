@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Service {{service.ServiceName}}</h2>
+
+<p><a href="/service_charts/{{service.ServiceName}}">charts</a></p>
+
+<table class="formatting">
+    <tr>    <th>URI match:</th> <td>{{service.Match}}</td>      </th>
+    <tr>    <th>Remove URI prefix:</th> <td>{{service.RemovePrefix}}</td>      </th>
+    <tr>    <th>Active connections:</th> <td>{{active_connections|length}}/{{service.MaxConnections}}</td>      </th>
+    <tr>    <th>Queue:</th> <td>{{queue|length}}/{{service.Backlog}}</td>      </th>
+</table>
+
+<h3>Servers</h3>
+
+{% for s in free_servers %}
+    {{s.address()|host_port}} - free<br/>
+{% endfor %}
+{% for s in busy_servers %}
+    {{s.address()|host_port}} - busy<br/>
+{% endfor %}
+{% for s in bad_servers %}
+    {{s.address()|host_port}} - bad<br/>
+{% endfor %}
+
+{% if active_requests %}
+    <h3>Active requests</h3>
+
+    <table>
+        <tr>
+            <th>Transfer</th>
+            <th>Client</th>
+            <th>Created</th>
+            <th>Request</th>
+            <th>Wait time</th>
+            <th>Started</th>
+            <th>Server</th>
+        </tr>
+
+        {% for request in active_requests %}
+            <tr>
+                <td><a href="../request/{{service.ServiceName}}/{{request.Id}}">
+                        {{- request.Id -}}
+                </a></td>
+                <td>{{- request.ClientAddress|host_port -}}</td>
+                <td>{{request.CreatedTime|dt_fmt}} ({{request.CreatedTime|time_delta}} ago)</td>
+                <td>{{request.HTTPRequest.Method}} {{request.HTTPRequest.OriginalURI}}</td>
+                <td>{{request.TransferStartTime|time_delta(request.CreatedTime)}}</td>
+                <td>{{request.TransferStartTime|dt_fmt}} ({{request.TransferStartTime|time_delta}} ago)</td>
+                <td>{{request.ServerAddress|host_port}}</td>
+            </tr>
+	    {% endfor %}
+    </table>    
+{% endif %}
+
+{% if queue %}
+
+    <h3>Queued transfers</h3>
+
+    <table>
+        <tr>
+            <th>Transfer</th>
+            <th>Client</th>
+            <th>Request</th>
+            <th>Created</th>
+            <th>Wait time</th>
+        </tr>
+
+        {% for request in queue %}
+            <tr>
+                <td><a href="../request/{{service.ServiceName}}/{{request.Id}}">
+                        {{- request.Id -}}
+                </a></td>
+                <td>{{- request.ClientAddress|host_port -}}</td>
+                <td>{{request.HTTPRequest.Method}} {{request.HTTPRequest.OriginalURI}}</td>
+                <td>{{request.CreatedTime|dt_fmt}}</td>
+                <td>{{request.CreatedTime|time_delta}}</td>
+            </tr>
+        {% endfor %}
+    </table>   
+    
+{% endif %} 
+
+{% if history %}
+
+    <h3>History</h3>
+                
+    <table>
+        <tr>
+            <th>Transfer</th>
+            <th>Client</th>
+            <th>Created</th>
+            <th>Request</th>
+            <th>Wait time</th>
+            <th>Started</th>
+            <th>Server</th>
+            <th>Complete</th>
+            <th>Byte count</th>
+            <th>Status
+        </tr>
+
+        {% for c in history %}
+            <tr>
+                <td><a href="../request/{{service.ServiceName}}/{{c.Id}}">
+                        {{- c.Id -}}
+                </a></td>
+                <td>{{- c.ClientAddress|host_port -}}</td>
+                <td>{{c.CreatedTime|dt_fmt}}</td>
+                <td>{{c.HTTPRequest.Headline}}</td>
+                <td>{{c.TransferStartTime|time_delta(c.CreatedTime)}}</td>
+                <td>{{c.TransferStartTime|dt_fmt}}</td>
+                <td>{{c.ServerAddress|host_port}}</td>
+                <td>{{c.TransferEndTime|dt_fmt}}&nbsp({{c.TransferEndTime|time_delta(c.TransferStartTime)}})</td>
+                <td>{{c.BytesClientToServer + c.BytesServerToClient}}</td>
+                <td>{{c.HTTPStatus}}
+                    {%- if c.Error %}<br/>{{c.Error}}{% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+    </table>
+{% endif %}
+
+{% endblock %}            

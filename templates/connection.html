@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Connection {{service.Name}}:{{connection.CAddr|host_port}}</h2>
+            
+<table class=form>
+    <tr><th>Request headline:</th>
+        <td><pre>{{connection.Request.Headline}}</pre></td>
+    </tr>
+    <tr>
+        <th>URI:</th>
+        <td>
+                {%- if connection.Request.OriginalURI and connection.Request.OriginalURI != connection.Request.URI %}
+                    original: {{connection.Request.OriginalURI}}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rewritten: {{connection.Request.URI}}
+                {% else %}
+                    {{connection.Request.URI}}
+                {% endif %}
+        </td>
+    </tr>
+    <tr><th>Dispatched to:</th>
+        <td>{{connection.Server.address()|host_port if connection.Server else "-" }}</td>
+    </tr>
+
+    {% if connection.Proxy is not none %}
+		<tr>
+			<th>Request:</th>
+			<td>
+				{% for r in connection.Proxy.RequestParts %}
+					<pre class=header>{{r.as_text()}}</pre>
+				{% endfor %}
+				{% if connection.Proxy.CSBytes %}body: {{connection.Proxy.CSBytes}} bytes{% endif %}
+			</td>
+		</tr>
+	    <tr>
+    		<th>Response:</th>
+    		<td>
+    			{% for r in connection.Proxy.ResponseParts %}
+    				<pre class=header>{{r.as_text()}}</pre>
+    			{% endfor %}
+    			{% if connection.Proxy.SCBytes %}body: {{connection.Proxy.SCBytes}} bytes{% endif %}
+    		</td>
+	    </tr>
+    {% else %}
+            <tr><td>not started</td></tr>
+    {% endif %}
+</table>
+
+{#
+<h3>Connection log</h3>
+<p class=connection_log>
+    <pre>
+        {%- for l in connection.combinedLog() -%}
+            {{l}}<br/>
+        {%- endfor %}
+    </pre>
+</p>
+#}
+
+{% endblock %}

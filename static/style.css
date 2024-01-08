@@ -1,0 +1,74 @@
+body, td, th {
+    font-family: Verdana, Arial, Verdana, Tahoma;
+    font-size: 12px;
+    vertical-align: top;
+    }
+td, th {
+    border: 1px solid #aaaaaa;
+    padding: 5px;
+    }
+td {
+    border: 1px solid #aaaaaa;
+}
+th {
+    border-bottom: 1px solid #aaaaaa;
+    text-align: left;
+    b-ackground-color: #eeeeee;
+    color: gray;
+    }
+table {
+    border-collapse: collapse;
+    }
+
+table.formatting {
+    border: 0;
+}
+
+.formatting td, .formatting th {
+    border: 0;
+}
+
+.form th, .form td {
+    border: 0;
+}
+
+.form th {
+    text-align: right;
+}
+
+div.log_line {
+    white-space: nowrap;
+    font-size:10px;
+    }
+
+.red {
+    color: #FF4444;
+    }
+.yellow {
+    color: #AA3333;
+    }
+
+.none {
+    border-left: 0;
+    border-right: 0;
+}
+
+.right {
+    border-left: 0;
+    }
+.left {
+    border-right: 0;
+    }
+
+p.connection_log {
+    font-family: Courier;
+    }
+    
+pre.header {
+    padding: 5px;
+    background-color: #EEE;
+}
+
+span.uri {
+    font-family: Courier;    
+}

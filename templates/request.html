@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Transfer {{request.Id}}</h2>
+            
+<table class=form>
+    <tr><th>Created:</th><td>{{request.CreatedTime|dt_fmt}}</td></tr>
+    <tr><th>Port:</th><td>{{request.VServerPort}}</td></tr>
+    <tr><th>Client:</th>
+        <td>{{request.ClientAddress|host_port}}</td>
+    </tr>
+     {% if request.Received %}
+        <tr>
+            <th>Request reader started:</th>
+            <td>{{request.RequestReaderStartTime|time_delta(request.CreatedTime)}}
+            </td>
+        </tr>       
+        {% if not request.RequestReaderSSLCreated is none %}
+            <tr><th>SSL wrapped:</th><td>{{request.RequestReaderSSLCreated|time_delta(request.RequestReaderStartTime)}}</td></tr>      
+        {% endif %} 
+        <tr>
+            <th>Request fully received:</th>
+            <td>{{request.RequestReaderEndTime|time_delta(request.CreatedTime)}}
+            </td>
+        </tr>
+        <tr><th>Request headline:</th>
+            <td><pre>{{request.HTTPRequest.Headline}}</pre></td>
+        </tr>
+        <tr>
+            <th>URI:</th>
+            <td>
+                    {%- if request.HTTPRequest.OriginalURI and request.HTTPRequest.OriginalURI != request.HTTPRequest.URI %}
+                        original: <span class=uri>{{request.HTTPRequest.OriginalURI}}</span><br/>
+                        rewritten: <span class=uri>{{request.HTTPRequest.URI}}</span>
+                    {% else %}
+                        <span class=uri>{{request.HTTPRequest.URI}}</span>
+                    {% endif %}
+            </td>
+        </tr>
+        <tr><th>Service:</th><td>{{request.ServiceName}}</td></tr>
+    {% endif %}
+
+    {% if request.Done or request.Failed %}
+    
+        <tr><th>Server:</th>
+            <td>{{request.ServerAddress|host_port if request.ServerAddress else "-" }}</td>
+        </tr>
+
+        <tr>
+            <th>Queue wait time</th>
+            <td>{{[request.TransferStartTime, request.RequestReaderEndTime]|max|time_delta(request.RequestReaderEndTime)}}</td>
+        </tr>
+        <tr>
+            <th>Transfer started</th>
+            <td>{{request.TransferStartTime|dt_fmt}}</td>
+        </tr>
+        <tr>
+            <th>Connected to server</th>
+            <td>{{request.ConnectedToWorkerTime|time_delta(request.TransferStartTime)}}</td>
+        </tr>
+        <tr>
+            <th>Transfer ended</th>
+            <td>{{request.TransferEndTime|dt_fmt}} ({{request.TransferEndTime|time_delta(request.TransferStartTime)}})</td>
+        </tr>
+        {% if request.Failed %}
+            <tr>
+                <th>Error</th>
+                <td>{{request.Error}}</td>
+            </tr>
+        {% endif %}
+    {% endif %}
+
+        
+    {% if request.HTTPRequest is not none %}
+        <tr>
+		<tr>
+			<th>Request:</th>
+			<td>
+				{% for r in request.RequestParts %}
+					<pre class=header>{{r.as_text()}}</pre>
+				{% endfor %}
+				{% if request.BytesClientToServer %}body: {{request.BytesClientToServer}} bytes{% endif %}
+			</td>
+		</tr>
+	    <tr>
+    		<th>Response:</th>
+    		<td>
+    			{% for r in request.ResponseParts %}
+    				<pre class=header>{{r.as_text()}}</pre>
+    			{% endfor %}
+    			{% if request.BytesServerToClient %}body: {{request.BytesServerToClient}} bytes{% endif %}
+    		</td>
+	    </tr>
+    {% else %}
+            <tr><td>not started</td></tr>
+    {% endif %}
+</table>
+
+{% endblock %}

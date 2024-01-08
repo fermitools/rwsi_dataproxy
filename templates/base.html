@@ -1,0 +1,27 @@
+<html>
+<head>
+    <title>{%block head_title %}{{Title}}{% endblock %}</title>
+    <link rel="stylesheet" type="text/css" href="/static/style.css"/>
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+<h1>{{Title}}</h1>
+
+{# <p><a href="/dashboard">Data Flow</a>&nbsp;&nbsp;&nbsp;<a href="/services">Services</a>&nbsp;&nbsp;&nbsp;<a href="/servers">Virtual servers</a></p> #}
+
+<table class="formatting">
+    <tr>
+        <td><a href="/dashboard">Data Flow</a></td>
+        <td><a href="/services">Services</a></td>
+        <td><a href="/servers">Virtual servers</a></td>
+        <td><a href="/scans">Scans</a></td>
+    </tr>
+</table>
+
+{% block contents %}{% endblock %}
+
+<div style="position:fixed; right:10px; bottom: 3px; z-index:-1"><i><span style="color:gray; font-size:10px">Version: {{Version}}</span></i></div>
+</body>
+</html>
+
+

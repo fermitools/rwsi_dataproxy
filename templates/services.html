@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Services</h2>
+
+<table>
+    <tr>
+        <th rowspan=2>Service</th>
+        <th rowspan=2>Server ports</th>
+        <th rowspan=2>Match</th>
+        <th rowspan=2>Active Connections</th>
+        <th rowspan=2>Queue</th>
+        <th colspan=3>Processing time</th>
+        <th colspan=3>Wait time</th>
+        <th colspan=3>Request Counts</th>
+        <th rowspan=2>Servers</th>
+        <th rowspan=2>Probe</th>
+        <th rowspan=2>Timeout</th>
+    </tr>
+    <tr>
+        <th class=left>curr</th><th class=none>avg</th><th class=right>max</th>
+        <th class=left>curr</th><th class=none>avg</th><th class=right>max</th>
+        <th class=left>10s</th><th class=none>3m</th><th class=right>1h</th>
+    </tr>
+    
+    {% for s, server_list in services %}
+        <tr>
+            <td><a href="./service/{{s.ServiceName}}">{{s.ServiceName}}</a></td>
+            <td>{% for server in server_list %}{{server.Port}}{{'(ssl)' if server.TLS}} {% endfor %}</td>
+            <td>{{s.Match}}</td>
+            <td class="{{s.request_count_class}}">{{s.activeRequestCount()}}/{{s.MaxConnections}}</td>
+            <td>{{s.queueCount()}}/{{s.Backlog}}</td>
+            <td class=left>{{s.currentProcessTime()|pretty_time}}</td>
+            <td class=none>{{s.AvgProcT|pretty_time}}</td>
+            <td class=right>{{s.MaxProcT|pretty_time}}</td>
+            <td class=left>{{s.currentQueueWaitTime()|pretty_time}}</td>
+            <td class=none>{{s.AvgWaitT|pretty_time}}</td>
+            <td class=right>{{s.MaxWaitT|pretty_time}}</td>
+            <td class=left>{{s.f1|pretty_frequency}}</td>
+            <td class=none>{{s.f2|pretty_frequency}}</td>
+            <td class=right>{{s.f3|pretty_frequency}}</td>
+            <td>{% for srv in s.listServers() %}{{srv.address()|host_port}}<br/>{% endfor %}</td>
+            <td>{{s.Probe or ""}}</td>
+            <td>{{s.ProbeTimeout}}/{{s.TransferTimeout}}</td>
+        </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}

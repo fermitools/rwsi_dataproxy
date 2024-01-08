@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block contents %}
+
+<h2>Request correlations</h2>
+
+<table class="correlations">
+    <tr>
+        <th rowspan="2">URL pattern</th><th rowspan="2">Requests</th><th colspan="{{windows|length}}">Repeats within time window</th>
+    <tr>
+    </tr>
+        {% for t in windows %}<th>{{t}} seconds</th>{% endfor %}
+    </tr>
+    {% for item in stats %}
+        <tr>
+            <td class="key">{{item["key"]|join("&nbsp;...&nbsp;")}}</td>
+            <td>{{item["request_count"]}}</td>
+            {% for t in windows %}
+                <td>{{item["stats"][t]["hits"]}}&nbsp;({{"%.2f%%" % (item["stats"][t]["hit_ratio"]*100,)}})</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+</table>
+
+{% endblock %}
+            
