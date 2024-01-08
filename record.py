@@ -2,7 +2,7 @@ from pythreader import Primitive, PyThread, synchronized, Scheduler
 import numpy as np
 import time, fnmatch
 import sqlite3
-from debug import Debugged
+from logs import Logged
 
 IMin, ISum, ILast, IMax = 0,1,2,3
 
@@ -278,11 +278,11 @@ class Record(object):
     def aggregate(self, agg, bin, t0=None, t1=None, label="+"):
         return self[bin][t0:t1].aggregate(agg, label)
 
-class RecordDatabase(PyThread, Debugged):
+class RecordDatabase(PyThread, Logged):
 
     def __init__(self, dbpath, timelines=[], save_interval=30, load_all=False, retain="7d"):
         PyThread.__init__(self)
-        Debugged.__init__(self, "[record db]")
+        Logged.__init__(self, name="[record db]")
         self.DBPath = dbpath
         self.Records = {}       # name -> Record
         self.SaveInterval = save_interval

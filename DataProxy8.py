@@ -2,17 +2,15 @@ import threading
 #from Selector import Selector
 import yaml, socket, time, fnmatch, signal, select, sys, traceback
 from datetime import datetime, timedelta
-#from LogFile import LogFile
+from logs import LogFile
 from threading import RLock
 from WebInterface2 import DataProxyWebInterface
-from pythreader import TaskQueue, Task, PyThread, synchronized, Primitive, Scheduler, LogFile
+from pythreader import TaskQueue, Task, PyThread, synchronized, Primitive, Scheduler
 from HTTPProxy2 import HTTPProxy
 from DataLogger2 import DataLogger
 from record import TimeWindow
 #from DataLogger import DataLogger
 from logs import Logged
-from debug import Debugged
-import debug
 from timelib import timestamp
 from VServer1 import VirtualServer
 from service import Service
@@ -35,21 +33,20 @@ def seconds(t1, t2):
     return delta.days * 3600 * 24 + delta.seconds + delta.microseconds/1000000.0
 
 
-class DataProxy(Debugged, Logged, PyThread):
+class DataProxy(Logged, PyThread):
 
     GlobalFields = ["tick"]
 
     TickInterval = 10.0
 
 
-    def __init__(self, config_file, scanner_detector, data_logger, logfile, logdir):
-        Logged.__init__(self, logfile)
+    def __init__(self, config_file, scanner_detector, data_logger):
+        Logged.__init__(self)
         PyThread.__init__(self)
         self.DataLogger = data_logger
         self.ConfigFile = config_file
         self.Config = yaml.load(open(config_file, 'r'), Loader=yaml.SafeLoader)
         debug_enabled = self.Config.get("Debug",{}).get("enabled", False)
-        Debugged.__init__(self)
         self.Services = {}      # {name: Service}
         self.Servers = {}       # {port:server}
         for svc in self.Config["Services"]:
@@ -62,7 +59,7 @@ class DataProxy(Debugged, Logged, PyThread):
             port = srv["Port"]
             if port in self.Servers:
                 print(("Server with port=%d appears twice in the configuration" % (port,)))
-            self.Servers[port] = server = VirtualServer(self.Services, scanner_detector, self.DataLogger, srv, logdir)
+            self.Servers[port] = server = VirtualServer(self.Services, scanner_detector, self.DataLogger, srv)
             self.DataLogger.addServer(port, server.LoggerFields)
         self.DataLogger.addGlobals(self.GlobalFields)
 
@@ -172,7 +169,7 @@ def getMemory():
 class Monitor(PyThread, Logged):
 
     def __init__(self, proxy, logfile):
-        Logged.__init__(self, logfile, name="thread monitor")
+        Logged.__init__(self, name="thread monitor")
         PyThread.__init__(self)
         self.Proxy = proxy
         
@@ -198,11 +195,6 @@ class Monitor(PyThread, Logged):
             for n, c in sorted(counts.items()):
                 self.log("  %-50s%d" % (n+":", c))
             
-            if False:
-                ocount = "object counts:"
-                for cname, n in sorted(Counted.counts()):
-                    ocount = ocount + f" {cname}: {n}"
-                self.log(ocount)
             time.sleep(30)
             
             
@@ -233,29 +225,33 @@ if __name__ == "__main__":
 
         config = yaml.load(open(config_file, 'r'), Loader=yaml.SafeLoader)
         debug_file = "-" if "-d" in opts else None
-        if "-d" in opts or ("Debug" in config and config["Debug"]["enabled"]):
-            cfg = config.get("Debug", {})
-            debug_file = debug_file or cfg.get("file", "DataProxy.debug")
-            debug.init(debug_file)
 
         print("creating DataLogger...")
         data_logger = DataLogger(config)
         monitor_file = None   
-        logdir = None
-
         requests_logger = None
+        logger = None
         if "Log" in config:
+            print("Logging enabled")
             cfg = config["Log"]
             if cfg.get("enabled", True):
                 logdir = cfg.get("logdir", ".")
+                print("  log dir:", logdir)
                 os.makedirs(logdir, exist_ok = True)
-                logs.openLogFile(logdir + "/DataProxy.log")
-                logs.openErrorFile(logdir + "/DataProxy.errors")
-                monitor_file = logdir + "/monitor.log"
-                logs.openRequestLog(logdir + "/requests.log", data_logger)
-                
-        #sel = Selector()              
+                debug_enabled = "-d" in opts or config.get("Debug", {}).get("enabled", False)
+                print("  debug", "enabled" if debug_enabled else "disabled")
+                logger = logs.init(logdir + "/DataProxy.log",
+                    error_out = logdir + "/DataProxy.errors",
+                    debug_out = debug_file or (logdir + "/DataProxy.debug"),
+                    debug_enabled = debug_enabled
+                    )
+                logger.add_channel("requests", logdir + "/requests.log")
+                logger.add_channel("monitor", logdir + "/monitor.log")
 
+                for server in config.get("Servers", []):
+                    port = server["Port"]
+                    logger.add_channel(f"server({port}).log", logdir + f"/server_{port}.log")
+                    logger.add_channel(f"server({port}).errors", logdir + f"/server_{port}.errors")
 
         scanner_detector = None
         if "ScannerDetector" in config:
@@ -265,7 +261,7 @@ if __name__ == "__main__":
             print("Scanner detector created")
 
         print("creating DataProxy...")
-        tm = DataProxy(config_file, scanner_detector, data_logger, logs.logfile, logdir)
+        tm = DataProxy(config_file, scanner_detector, data_logger)
         data_logger.start()
 
 
@@ -279,7 +275,6 @@ if __name__ == "__main__":
             log_file = cfg.get("logfile")
             if log_file:
                 log_file = LogFile(log_file)
-                log_file.start()
             title = cfg.get("title", "Octopus Proxy %s" % (socket.getfqdn(),))
             correlations_file = cfg.get("correlations_file")
             print("creating DataProxyWebInterface...")
@@ -296,7 +291,7 @@ if __name__ == "__main__":
             gui_server = HTTPServer(port, gui, 
                     certfile=certfile, keyfile=keyfile, ca_file=ca_file,
                     max_connections = 20, max_queued = 10,
-                    logging = logging, log_file=log_file, debug=debug)
+                    logging = log_file is not None, log_file=log_file, debug=debug)
             gui_http = "https" if tls else "http"
             gui_url = f"{gui_http}://%s:%s/index" % (socket.getfqdn(), port)
             print("starting HTTPServer...")
@@ -317,10 +312,11 @@ if __name__ == "__main__":
 
         tm.start()
 
-        monitor_log = LogFile("monitor.log", append=False)
-        monitor_log.start()
-        monitor = Monitor(tm, monitor_log)
-        monitor.start()
+        if False:
+            monitor_log = LogFile("monitor.log", append=False)
+            monitor_log.start()
+            monitor = Monitor(tm, monitor_log)
+            monitor.start()
 
         print("--- started ---")
         tm.join()

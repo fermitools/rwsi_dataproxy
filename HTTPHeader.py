@@ -1,7 +1,6 @@
 from py3 import to_bytes, to_str, PY3
 import re
 from uid import uid
-#from object_counter import Counted
 
 class HTTPHeader(object):
 

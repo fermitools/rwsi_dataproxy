@@ -1,12 +1,13 @@
 from pythreader import synchronized, TaskQueue, Task, Primitive
-from debug import Debugged
-from logs import Logged
+from logs import Logged, format_service_log
 from iptable import IPTable
 from server_list import HashedServerList, ServerList
 from record import TimeWindow
 import time, threading, traceback, socket, sys, fnmatch
 from HTTPProxy2 import HTTPProxy
 from py3 import to_bytes, PY3
+from request import Request
+from dns import DNS
 
 
 if PY3:
@@ -15,13 +16,12 @@ else:
     from urllib2 import urlopen
 
 
-class Transfer(Task, Debugged, Logged):
+class Transfer(Task, Logged):
     
     def __init__(self, request, service):
         Task.__init__(self)
         self.Request = request
         rid = request.Id
-        Debugged.__init__(self, f"[{rid} transfer]")
         Logged.__init__(self, name=f"[{rid} transfer]")
         self.Service = service
     
@@ -85,6 +85,8 @@ class Transfer(Task, Debugged, Logged):
             self.debug("No server available")
             error = "Can not find available server"
             csock.sendall(to_bytes("HTTP/1.1 503 No server available\n\n"))
+            request.HTTPStatus = 503
+            request.Error = "No server available"
             request.close(False)
         else:
             saddr = server.address()
@@ -113,7 +115,7 @@ class Transfer(Task, Debugged, Logged):
             request.close(True)
         return request
 
-class Service(Primitive, Debugged, Logged):
+class Service(Primitive, Logged):
     
     #
     # Note on URI rewriting
@@ -137,10 +139,9 @@ class Service(Primitive, Debugged, Logged):
                 probe, probe_timeout, match, transfer_timeout,
                 server_discipline, access, remove_prefix, add_prefix,
                 graphite_suffix = None):
-        Logged.__init__(self, mgr.LogTo)
+        Logged.__init__(self, name=f"[Service {name}]", logger=mgr.Logger)
         self.ServiceName = name
-        Primitive.__init__(self, name=f"[Service {name}")
-        Debugged.__init__(self)
+        Primitive.__init__(self, name=f"[Service {name}]")
         self.Match = match
         self.RewriteURI = None  # see note about URL rewriting  # rewrite_uri   # tuple: ("old_head", "new_head") or None
         self.Manager = mgr
@@ -294,31 +295,12 @@ class Service(Primitive, Debugged, Logged):
         #self.debug(f"{rid}: queue counts: {nqueued}, {nrunning}")
             
         return True     # tell the dispatcher that the request was handled
-        
-    def logRequest(self, request):
 
-        self.log_request(request)
-        
-        http_request = request.HTTPRequest
-        addr = request.ClientAddress
-        headline = (http_request.headline() or '').strip()
-        if request.ServiceAcceptStatus != "queued":
-            self.DataLogger.add("service", self.ServiceName, event="request.%s" % (request.ServiceAcceptStatus,))
+    def log_request(self, request):
+        line = format_service_log(request)
+        self.log(line, channel="requests")
+        self.DataLogger.logRequest(request)
 
-        wait_t = request.TransferStartTime - request.CreatedTime
-        proc_t = request.TransferEndTime - request.TransferStartTime
-        t_created, t_started, t_complete = request.CreatedTime, request.TransferStartTime, request.TransferEndTime
-        self.DataLogger.add("service", self.ServiceName, t=t_complete, 
-            wait_time=wait_t, process_time=proc_t, 
-            bytes_client_to_server=request.BytesClientToServer, bytes_server_to_client=request.BytesServerToClient,
-            data_size=request.ByteCount)
-    
-        if request.HTTPStatus is not None:
-            self.DataLogger.add("service", self.ServiceName, event="request.status", label="%d" % ((request.HTTPStatus//100)*100,))
-            
-        self.DataLogger.recordRequest(request)        
-        
-            
     def currentQueueWaitTime(self):
         queue = self.TransferQueue.waitingTasks()
         if not queue:
@@ -332,7 +314,6 @@ class Service(Primitive, Debugged, Logged):
             now = time.time()
             maxt = max([now - c.Started for c in active])
         return maxt  
-
 
     def activeRequestCount(self):
         return self.TransferQueue.nrunning()
@@ -388,31 +369,26 @@ class Service(Primitive, Debugged, Logged):
     @synchronized
     def shutdown(self):
         self.Shutdown = True
-        
 
     #
     # Task Queue delegate methods
     #
     
     CONNECTION_HISTORY_SIZE = 200
-    def requestEnded(self, request):
+    def request_task_ended(self, task):
+        request = task.Request
+        request.TransferStartTime = task.Started
+        request.TransferEndTime = task.Ended
         self.TransferHistory.insert(0, request)
         self.TransferHistory = self.TransferHistory[:self.CONNECTION_HISTORY_SIZE]
         self.log_request(request)
         
     def taskEnded(self, queue, task, request):
-        request.TransferStartTime = task.Started
-        request.TransferEndTime = task.Ended
-        self.requestEnded(request)
-        rid = request.Id
-        #self.debug(f"{rid} transfer ended")
+        self.request_task_ended(task)
             
     def taskFailed(self, queue, task, exc_type, exc_value, tb):
-        request = task.Request
-        request.TransferStartTime = task.Started
-        request.TransferEndTime = task.Ended
-        self.requestEnded(request)
-        rid = request.Id
+        self.request_task_ended(request)
+        rid = task.Request.Id
         info = f"Request {rid} failed:\n" + ("".join(traceback.format_exception(exc_type, exc_value, tb)))
         self.errorLog(info)
         self.debug(info)

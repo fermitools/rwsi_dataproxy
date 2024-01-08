@@ -3,7 +3,6 @@ from python_model import Model
 from logs import Logged
 import random, time
 from pythreader import Primitive, synchronized
-from debug import Debugged
 from logs import Logged
 
 class Scan(object):
@@ -41,7 +40,7 @@ class Scan(object):
     def estimated_requests(self):
         return self.N/self.Fraction
     
-class ScannerDetector(Primitive, Logged, Debugged):
+class ScannerDetector(Primitive, Logged):
     
     DefaultThreshold = 0.9 # everything with signal > threshold will be considered scanner
     DefaultSamplingFraction = 0.1     # run only a fraction of requests through the NN to save CPU time
@@ -49,7 +48,6 @@ class ScannerDetector(Primitive, Logged, Debugged):
     def __init__(self, config):
         Primitive.__init__(self, name="ScannerDetector")
         Logged.__init__(self, "scanner_detector.log")
-        Debugged.__init__(self, "ScannerDetector")
         load_from = config.get("model_file_prefix", "scanner_detector")
         self.Threshold = config.get("threshold", self.DefaultThreshold)
         self.SamplingFraction = config.get("fraction", self.DefaultSamplingFraction)

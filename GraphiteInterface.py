@@ -1,7 +1,6 @@
 import time, struct, socket, sys
-import logs
 from py3 import PY3, to_bytes
-from debug import Debugged
+from logs import Logged
 
 if PY3:
         import pickle
@@ -19,9 +18,9 @@ def sanitize_key(key):
         key = key.replace(old, new)
     return key
 
-class GraphiteInterface(Debugged):
+class GraphiteInterface(Logged):
     def __init__(self, config):
-        Debugged.__init__(self, my_name="GraphiteInterface")
+        Logged.__init__(self, name="GraphiteInterface")
         # pickle only for now
         self.host = config.get("host")
         self.pickle_port = config.get("port")

@@ -1,75 +1,55 @@
-from pythreader import LogFile, LogStream
-from request_logger import RequestLogger
-import sys
+from webpie.logs import Logged, Logger, LogFile, init
+from dns import DNS
 
-logfile = None
-errfile = None
-debugfile = None
-request_log = None
-
-def openLogFile(path):
-    global logfile
-    if path == "-":
-        logfile = LogStream(sys.stdout)
+def format_service_log(request):
+    created = request.CreatedTime
+    started = request.TransferStartTime
+    caddr = request.ClientAddress
+    http_request = request.HTTPRequest
+    headline = (http_request.headline() if http_request is not None else '') or ''
+    headline = headline.strip()
+    port = request.VServerPort
+    sname = request.ServiceName or '-'
+    saddr = request.ServerAddress or (None, None)
+    saddr = (saddr[0] or '-', saddr[1] or '-')
+    http_status = request.HTTPStatus or "-"
+    nbytes = request.BytesClientToServer + request.BytesServerToClient
+    chost = DNS[caddr[0]]
+    if request.Failed or not request.Started:
+        dtstart = dtdone = "-"
     else:
-        logfile = LogFile(path, flush_interval=1.0)
-        logfile.start()
-    
-def openErrorFile(path):
-    global errfile
-    if path == "-":
-        errfile = LogStream(sys.stdout)
-    else:
-        errfile = LogFile(path, flush_interval=1.0)
-        errfile.start()
+        dtstart = "%.3f" % (started - created,)
+        dtdone = "%.3f" % (request.TransferEndTime - started,)
+    line = '%s %s(%s):%s -> :%d [%s] -> "%s" %s:%s %s %s w:%s t:%s' % \
+        (request.Id, 
+        chost, caddr[0], caddr[1], 
+        port, headline,
+        sname, saddr[0], saddr[1],
+        http_status, nbytes,
+        dtstart, dtdone)
+    if request.Error:   line += f" e:[{request.Error}]"
+    return line
 
-def openDebugFile(path):
-    global debugfile
-    debugfile = LogStream(sys.stdout) if path == "-" else LogFile(path, interval="1h", flush_interval=1.0)
-    debugfile.log("-------- Started --------")
-    
-def openRequestLog(path, data_logger):
-    global request_log
-    if path:
-        logfile = LogFile(path)
-        logfile.start()
-        request_log = RequestLogger(logfile, data_logger)
-        
-class Logged(object):
-    def __init__(self, log_to=None, name=None, **args):
-        self.LogName = name
-        self.log_to(log_to or logfile)
-        
-    def log_to(self, log_to):
-        self.LogTo = LogFile(log_to) if isinstance(log_to, str) else log_to
-        
-    def log(self, msg):
-        if self.LogTo is not None:
-            name = self.LogName or str(self)
-            prefix = name + ": " if name else ""
-            self.LogTo.log("%s%s" % (prefix, msg))
-        
-    def errorLog(self, msg):
-        global errfile
-        if errfile is not None:
-            name = self.LogName or str(self)
-            prefix = name + ": " if name else ""
-            errfile.log("%s%s" % (prefix, msg))
-            
-    def log_request(self, request):
-        global request_log
-        if request_log is not None:
-            request_log.log(request)
-            
-            
-            
-        
-        
-            
-        
-        
-    
+def format_server_log(request):
+    created = request.CreatedTime
+    caddr = request.ClientAddress
+    cip, cport = caddr
+    chost = DNS[cip]
+    http_request = request.HTTPRequest
+    headline = (http_request.headline() if http_request is not None else '') or ''
+    headline = headline.strip()
+    port = request.VServerPort
 
-    
-    
+    dtstart = dtssl = dtend = "-"
+    if request.RequestReaderStartTime:         dtstart = "%.3f" % (request.RequestReaderStartTime - created,)
+    if request.RequestReaderSSLCreated:        dtssl = "%.3f" % (request.RequestReaderSSLCreated - created,)
+    if request.RequestReaderEndTime:           dtend = "%.3f" % (request.RequestReaderEndTime - created,)
 
+    line = '%s %s(%s):%s -> :%d %s [%s] -> "%s" wait:%s ssl:%s done:%s' % \
+        (request.Id, 
+        chost, caddr[0], caddr[1], 
+        port,
+        request.RequestReaderStatus, headline, request.ServiceName or "-", 
+        dtstart, dtssl, dtend)
+    if request.Error:   line += f" e:[{request.Error}]"
+    return line

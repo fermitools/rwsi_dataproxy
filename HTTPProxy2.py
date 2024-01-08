@@ -1,12 +1,11 @@
 from pythreader import PyThread, synchronized, Primitive
-from debug import Debugged
+from logs import Logged
 import sys, select, os, socket, traceback
 from py3 import to_bytes, to_str, PY3
 from HTTPHeader import HTTPHeader
 import errno
-#from object_counter import Counted
 
-class HTTPReader(Debugged):
+class HTTPReader(Logged):
     
     def __init__(self, sock, my_name, header_received=False, nbytes=0):
         self.Header = None
@@ -14,7 +13,7 @@ class HTTPReader(Debugged):
         self.Sock = sock
         self.ByteCount = nbytes
         self.EOF = False
-        Debugged.__init__(self, my_name=my_name)
+        Logged.__init__(self, name=my_name)
 
     MAXREAD = 1000000
         
@@ -49,7 +48,7 @@ class HTTPReader(Debugged):
             else:
                 assert not rest
 
-class HTTPPeer(PyThread, Debugged):
+class HTTPPeer(PyThread, Logged):
 
     MAXMSG = 1000
     
@@ -62,7 +61,7 @@ class HTTPPeer(PyThread, Debugged):
     def __init__(self, proxy, my_name, fsock, tsock, timeout=None, request_received=False):
         PyThread.__init__(self, daemon=True)
         self.MyName = my_name
-        Debugged.__init__(self, my_name = self.MyName)
+        Logged.__init__(self, name = self.MyName)
         self.FSock = fsock
         self.TSock = tsock
         self.Proxy = proxy
@@ -144,13 +143,13 @@ class HTTPPeer(PyThread, Debugged):
         self.ErrorMessage = error_message
             
                 
-class HTTPProxy(Primitive, Debugged):
+class HTTPProxy(Primitive, Logged):
 
     def __init__(self, request, ssock, transfer_timeout = 30):
         Primitive.__init__(self)
         transfer_id = request.Id
         self.MyName = "[%s proxy]" % (transfer_id,) if transfer_id is not None else "proxy"
-        Debugged.__init__(self, my_name=self.MyName)
+        Logged.__init__(self, name=self.MyName)
         self.Request = request
         self.HTTPRequest = request.HTTPRequest
         self.Body = request.Body or b''

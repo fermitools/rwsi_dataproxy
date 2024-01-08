@@ -4,12 +4,12 @@ from datetime import datetime
 import socket
 from GraphiteInterface import GraphiteInterface
 from timelib import timestamp
-from debug import Debugged
 from record import RecordDatabase
 import numpy as np
+from logs import Logged
 
 
-class DataLogger(PyThread, Debugged):
+class DataLogger(PyThread, Logged):
 
     Bins = [
         #(1.0,        60.0),
@@ -28,7 +28,7 @@ class DataLogger(PyThread, Debugged):
 
     def __init__(self, config):
         PyThread.__init__(self)
-        Debugged.__init__(self, my_name="DataLogger")
+        Logged.__init__(self, name="DataLogger")
         self.DBFile = config.get("DataLoggerFile", None)
         self.Interval = config.get("DataLoggerInterval", 10)
         self.GraphiteInterface = None
@@ -86,14 +86,12 @@ class DataLogger(PyThread, Debugged):
         #
         # Server
         #
-        
+        t_ssl_created = t_received = 0.0
         t_start = request.RequestReaderStartTime - request.CreatedTime
         if request.RequestReaderSSLCreated:
             t_ssl_created = request.RequestReaderSSLCreated - request.RequestReaderStartTime
-            t_received = request.RequestReaderEndTime - request.RequestReaderSSLCreated
-        else:
-            t_ssl_created = 0.0
-            t_received = request.RequestReaderEndTime - request.RequestReaderStartTime
+            if request.RequestReaderEndTime:
+                t_received = request.RequestReaderEndTime - request.RequestReaderSSLCreated
         error = request.RequestReaderStatus != "ok"
 
         port = request.VServerPort

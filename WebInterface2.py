@@ -6,7 +6,6 @@ import numpy as np
 from webpie import WPApp, WPHandler, WPStaticHandler
 from DataLogger2 import DataLogger
 from dns import DNS
-#from object_counter import Counted
 
 import time
 

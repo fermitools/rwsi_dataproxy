@@ -1,10 +1,9 @@
 import yaml, socket, time, fnmatch, signal, select, sys, traceback
 from datetime import datetime, timedelta
 from pythreader import TaskQueue, Task, PyThread, synchronized, Primitive            #, printWaiting
-from debug import Debugged
 from History import HistoryWindow
 from py3 import to_bytes, to_str, PY3
-from logs import Logged
+from logs import Logged, format_server_log
 from HTTPHeader import HTTPHeader
 from iptable import IPTable
 from record import TimeWindow
@@ -12,17 +11,17 @@ from uid import uid
 from request import Request
 from dns import DNS
 
-class RequestDispatcher(Debugged):
+class RequestDispatcher(Logged):
     
     def __init__(self, services):
-        Debugged.__init__(self, "[RequestDispatcher]")
+        Logged.__init__(self, name = "[RequestDispatcher]")
         self.Services = services
         
     def dispatch(self, request):
         # loop over services to find first match
         # once the match is found, add the request
         # if failed, return error
-        
+
         # status:
         #   ok
         #   nomatch     - service not found
@@ -30,20 +29,21 @@ class RequestDispatcher(Debugged):
             if service.acceptRequest(request):
                 request.Dispatched = True
                 request.DispatcherStatus = "dispatched"
+                request.ServiceName = service.ServiceName
                 return service
         else:
             request.Dispatched = False
             request.DispatcherStatus = "nomatch"
             return None
 
-class RequestReaderTask(Task, Debugged):
+class RequestReaderTask(Task, Logged):
     
     def __init__(self, request, vserver, dispatcher):
         Task.__init__(self)
         self.Request = request
         self.Id = request.Id
-        Debugged.__init__(self, f"[%s request reader]" % (self.Id,))
         self.VServer = vserver
+        Logged.__init__(self, name = f"[%s request reader]" % (self.Id,), logger=self.VServer)
         self.Dispatcher = dispatcher
     
     def run(self):
@@ -121,6 +121,7 @@ class RequestReaderTask(Task, Debugged):
             else:    
                 service = self.Dispatcher.dispatch(request)        
                 if not service:
+                    self.log("not found:", http_request.URI)
                     error = "Service not found"
                     http_status = 404
 
@@ -130,14 +131,13 @@ class RequestReaderTask(Task, Debugged):
             self.debug(f"senfing HTTP error: {http_status} {error}")
             try:    sock.sendall(to_bytes("HTTP/1.1 %s %s\n\n" % (http_status, error)))
             except: pass
-            request.Error = error
             request.Failed = True
             request.close(False)
             #self.VServer.recordRequest(request)
             
         return request
         
-class VirtualServer(PyThread, Debugged, Logged):
+class VirtualServer(PyThread, Logged):
     
     LoggerFields = [
         "status.server.connected", "status.server.rejected", "status.server.denied",
@@ -148,10 +148,13 @@ class VirtualServer(PyThread, Debugged, Logged):
         "queue.waiting", "queue.active"
     ]
     
-    def __init__(self, services, scanner_detector, data_logger, config, log_dir):
+    def __init__(self, services, scanner_detector, data_logger, config):
         self.Port = int(config["Port"])
         PyThread.__init__(self, name="VServer %d" % (self.Port,))
-        Debugged.__init__(self, "[VServer %s]" % (self.Port,))
+        Logged.__init__(self, name="[VServer %s]" % (self.Port,), 
+            log_channel=f"server({self.Port}).log",
+            error_channel=f"server({self.Port}).errors",
+            )
         self.Config = config
         self.Services = {}          # {name:Service}
         self.ServicesList = []      # [Service] - for ordered URL match lookup
@@ -161,11 +164,6 @@ class VirtualServer(PyThread, Debugged, Logged):
         self.ScannerDetector = scanner_detector
         
         self.TimeWindows = (TimeWindow(10.0),TimeWindow(180.0),TimeWindow(3600.0))
-
-        
-        #print self.Config
-
-        Logged.__init__(self, None if log_dir is None else "%s/server_%s.log" % (log_dir, self.Port), name=f"VServer {self.Port}")
         
         if self.TLS:
             import ssl
@@ -212,8 +210,6 @@ class VirtualServer(PyThread, Debugged, Logged):
             name=f"RequestReaderQueue {self.Port}")
 
         self.Access = IPTable(config = self.Config.get("access", {}))
-
-
         self.Shutdown = False
 
         self.kind = "[server %s]" % (self.Port,)
@@ -284,7 +280,7 @@ class VirtualServer(PyThread, Debugged, Logged):
                         self.ConnectionHistory.add(data=(None, True, "header queue full"))
                 if not submitted:
                     if request.Received:
-                        self.logRequest(request)
+                        self.DataLogger.logRequest(request)
                     request.close(False)
             except:
                 sys.stderr.write("%s: Uncaught exception in VServer(port=%d) main loop: %s\n" % (rid, self.Port, traceback.format_exc()))
@@ -298,8 +294,10 @@ class VirtualServer(PyThread, Debugged, Logged):
         if self.ScannerDetector is not None:
             self.ScannerDetector.check_for_scanner_request(self.Port, request.ClientAddress[0], request.HTTPRequest.OriginalURI)
         return False
-        #    self.Access.ban_ip_address(request.ClientAddress[0])
-        #    self.log("ip address banned as suspected scanner: " + request.ClientAddress[0] + "   request: " + request.HTTPRequest.headline())
+        
+    def log_request(self, request):
+        log_line = format_server_log(request)
+        self.log(log_line)
 
     #
     # Task queue delegate interface
@@ -309,9 +307,8 @@ class VirtualServer(PyThread, Debugged, Logged):
         request.RequestReaderStartTime = task.Started
         request.RequestReaderEndTime = task.Ended
         request.VServerError = request.Error
-        if not request.Dispatched:
-            self.log_request(request)
-            
+        self.log_request(request)
+
     def taskFailed(self, queue, task, exc_type, exc_value, tb):
         request = task.Request
         rid = request.Id
@@ -321,49 +318,8 @@ class VirtualServer(PyThread, Debugged, Logged):
         request.VServerError = request.Error
         self.log_request(request)
         info = f"Request {rid} failed:\n" + ("".join(traceback.format_exception(exc_type, exc_value, tb)))
-        self.errorLog(info)
-        self.debug(info)
+        self.error(info)
 
-    def logRequest(self, request):
-
-        if request.DispatcherStatus != "dispatched":
-            self.log_request(request)       # to go to request log file
-
-        t_start = request.RequestReaderStartTime - request.CreatedTime
-        if request.RequestReaderSSLCreated:
-            t_ssl_created = request.RequestReaderSSLCreated - request.RequestReaderStartTime
-            t_received = request.RequestReaderEndTime - request.RequestReaderSSLCreated
-        else:
-            t_ssl_created = 0.0
-            t_received = request.RequestReaderEndTime - request.RequestReaderStartTime
-        error = request.RequestReaderStatus != "ok"
-        nomatch = request.DispatcherStatus == "nomatch"
-        ok = request.DispatcherStatus == "dispatched"
-        rejected = request.VServerStatus == "rejected"
-        denied = request.VServerStatus == "denied"
-        
-        data = {
-                        "request.time.wait":t_start,
-                        "request.time.ssl":t_ssl_created,
-                        "request.time.read":t_received,
-                        "request.status.all":1.0,
-                        "request.status.readerror":1.0 if error else 0.0,
-                        "request.status.nomatch":1.0 if nomatch else 0.0,
-                        "request.status.accepted":1.0 if ok else 0.0,
-                
-                        "status.server.connected": 1.0,
-                        "status.server.denied": 1.0 if request.VServerStatus == "denied" else 0.0,
-                        "status.server.rejected": 1.0 if request.VServerStatus == "rejected" else 0.0,
-                        "status.server.nomatch": 1.0 if nomatch else 0.0,
-                        "status.server.dispatched": 1.0 if ok else 0.0
-        }
-        
-        self.DataLogger.add("server", self.Port, data=data)
-        
-        if request.Dispatched:
-            self.DataLogger.add("server", self.Port, label=request.ServiceName, data={"status.service":1.0})
-            
-        
     def tick(self):
         nwaiting, nactive = self.ReaderQueue.counts()
         self.DataLogger.add("server", self.Port,
