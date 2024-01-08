@@ -1,4 +1,4 @@
-from LogFile import LogFile, LogStream
+from pythreader import LogFile, LogStream
 from request_logger import RequestLogger
 import sys
 
@@ -12,7 +12,7 @@ def openLogFile(path):
     if path == "-":
         logfile = LogStream(sys.stdout)
     else:
-        logfile = LogFile(path)
+        logfile = LogFile(path, flush_interval=1.0)
         logfile.start()
     
 def openErrorFile(path):
@@ -20,12 +20,12 @@ def openErrorFile(path):
     if path == "-":
         errfile = LogStream(sys.stdout)
     else:
-        errfile = LogFile(path)
+        errfile = LogFile(path, flush_interval=1.0)
         errfile.start()
 
 def openDebugFile(path):
     global debugfile
-    debugfile = LogStream(sys.stdout) if path == "-" else LogFile(path, interval="1h")
+    debugfile = LogStream(sys.stdout) if path == "-" else LogFile(path, interval="1h", flush_interval=1.0)
     debugfile.log("-------- Started --------")
     
 def openRequestLog(path, data_logger):

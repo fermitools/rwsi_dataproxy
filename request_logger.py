@@ -1,4 +1,4 @@
-from LogFile import LogFile
+from pythreader import LogFile
 from request import Request
 from pythreader import Primitive
 from dns import DNS
@@ -7,7 +7,7 @@ class RequestLogger(Primitive):
     
     def __init__(self, logfile, data_logger):
         if isinstance(logfile, str):
-            logfile = LogFile(logfile)
+            logfile = LogFile(logfile, flush_interval=1.0)
             
         self.LogFile = logfile
         self.DataLogger = data_logger

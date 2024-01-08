@@ -2,10 +2,10 @@ import threading
 #from Selector import Selector
 import yaml, socket, time, fnmatch, signal, select, sys, traceback
 from datetime import datetime, timedelta
-from LogFile import LogFile
+#from LogFile import LogFile
 from threading import RLock
 from WebInterface2 import DataProxyWebInterface
-from pythreader import TaskQueue, Task, PyThread, synchronized, Primitive, Scheduler
+from pythreader import TaskQueue, Task, PyThread, synchronized, Primitive, Scheduler, LogFile
 from HTTPProxy2 import HTTPProxy
 from DataLogger2 import DataLogger
 from record import TimeWindow
@@ -83,8 +83,8 @@ class DataProxy(Debugged, Logged, PyThread):
         for s in self.Servers.values():
             s.start()
         scheduler = Scheduler()
-        scheduler.add(self.tick, self.TickInterval)
-        scheduler.add(self.DataLogger.sendStatsToGraphite, 60.0, self)
+        scheduler.add(self.tick, interval=self.TickInterval)
+        #scheduler.add(self.DataLogger.sendStatsToGraphite, self, interval=60.0)
         scheduler.start()
         scheduler.join()
         
@@ -208,9 +208,17 @@ class Monitor(PyThread, Logged):
             
 if __name__ == "__main__":
     import traceback, sys, os, threading, getopt
+    from Version import Version
+    import webpie, pythreader
+    
+    print("Octopus:    ", Version, __file__)
+    print("webpie:     ", webpie.__version__, webpie.__file__)
+    print("pythreader: ", pythreader.__version__, pythreader.__file__)
+    print()
+    
     try:
         import logs
-        from webpie import HTTPServer, HTTPSServer
+        from webpie import HTTPServer
 
         open("DataProxy.pid", "w").write("%d" % (os.getpid(),))
         
@@ -277,23 +285,20 @@ if __name__ == "__main__":
             print("creating DataProxyWebInterface...")
             gui = DataProxyWebInterface(tm, title, data_logger, scanner_detector, static_location, correlations_file)
             port = cfg["port"]
-            tls = "tls" in cfg
             logging = log_file is not None
             debug = None        # for now
-            if tls:
-                keyfile = cfg["tls"]["key_file"]
-                certfile = cfg["tls"]["cert_file"]
-                ca_file = cfg["tls"].get("ca_file")
-                gui_server = HTTPSServer(port, gui, 
-                    certfile, keyfile, ca_file=ca_file,
-                    url_pattern = "*", max_connections = 20, max_queued = 10,
+
+            tls = cfg.get("tls", {})
+            keyfile = tls.get("key_file")
+            certfile = tls.get("cert_file")
+            ca_file = tls.get("ca_file")
+
+            gui_server = HTTPServer(port, gui, 
+                    certfile=certfile, keyfile=keyfile, ca_file=ca_file,
+                    max_connections = 20, max_queued = 10,
                     logging = logging, log_file=log_file, debug=debug)
-                gui_url = "https://%s:%s/index" % (socket.getfqdn(), port)
-            else:
-                gui_server = HTTPServer(port, gui, 
-                            url_pattern = "*", max_connections = 20, max_queued = 10,
-                            logging = logging, log_file=log_file, debug=debug)
-                gui_url = "http://%s:%s/index" % (socket.getfqdn(), port)
+            gui_http = "https" if tls else "http"
+            gui_url = f"{gui_http}://%s:%s/index" % (socket.getfqdn(), port)
             print("starting HTTPServer...")
             gui_server.start()
             gui_server.kind = "GUIServer"
@@ -302,7 +307,6 @@ if __name__ == "__main__":
                 rport = cfg["redirector"]["port"]
                 url = cfg["redirector"].get("url", gui_url)
                 gui_redirector = HTTPServer(rport, Redirector(url), 
-                        url_pattern = "*", 
                         max_connections = 20, max_queued = 10, logging = logging, log_file=log_file, debug=None)
                 gui_redirector.kind = "GUIRedirector"
                 print("starting Redirector...")

@@ -38,7 +38,6 @@ class Request(object):
         self.TransferStatus = None
         
         self.HTTPStatus = None
-        self.HTTPRequest = None
         
         self.VServerError = None
         self.ServiceName = None

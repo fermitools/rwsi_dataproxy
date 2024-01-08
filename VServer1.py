@@ -35,8 +35,7 @@ class RequestDispatcher(Debugged):
             request.Dispatched = False
             request.DispatcherStatus = "nomatch"
             return None
-            
-            
+
 class RequestReaderTask(Task, Debugged):
     
     def __init__(self, request, vserver, dispatcher):
@@ -123,7 +122,7 @@ class RequestReaderTask(Task, Debugged):
                 service = self.Dispatcher.dispatch(request)        
                 if not service:
                     error = "Service not found"
-                    http_status = 403
+                    http_status = 404
 
         if not request.Dispatched:
             request.Error = error
@@ -138,21 +137,6 @@ class RequestReaderTask(Task, Debugged):
             
         return request
         
-class RequestReader(Debugged, Logged):
-    
-    def __init__(self, vserver, dispatcher, data_logger, config):
-        Debugged.__init__(self, "[RequestReader %s]" % (vserver.Port,))
-        Logged.__init__(self, "[RequestReader %s]" % (vserver.Port,))
-        self.VServer = vserver
-        self.Dispatcher = dispatcher
-        self.DataLogger = data_logger
-     
-    def put(self, request):
-        self.ReaderQueue.addTask(RequestReaderTask(request, self.VServer, self.Dispatcher))
-        
-    def counts(self):
-        return self.ReaderQueue.counts()
-                
 class VirtualServer(PyThread, Debugged, Logged):
     
     LoggerFields = [

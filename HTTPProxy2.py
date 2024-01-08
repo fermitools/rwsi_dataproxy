@@ -21,7 +21,7 @@ class HTTPReader(Debugged):
     def read(self):
         try:    data = self.Sock.recv(self.MAXREAD)
         except socket.timeout:
-            self.debug("timeout")
+            #self.debug("timeout")
             data = b''
         except Exception as e: 
             self.debug("reader error: %s" % (e,))
@@ -269,9 +269,11 @@ class HTTPProxy(Primitive, Debugged):
                     sock.shutdown(socket.SHUT_WR)
                 except OSError as exc:
                     if exc.errno == errno.ENOTCONN:
-                        self.debug("not connected exception -- ignored")
+                        #self.debug("not connected exception -- ignored")
+                        pass
                     else:
-                        self.debug("Error shutting down write side: %s" % (traceback.format_exc(),))
+                        #self.debug("Error shutting down write side: %s" % (traceback.format_exc(),))
+                        pass
  
 
 if __name__ == "__main__":

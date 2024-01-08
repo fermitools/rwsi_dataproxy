@@ -1,4 +1,4 @@
-from LogFile import LogFile, LogStream, make_timestamp
+from pythreader import LogFile, LogStream
 import sys
 from datetime import datetime
 
@@ -20,7 +20,15 @@ def debug(msg, t=None, add_timestamp=True):
         if add_timestamp or t is not None:
             msg = "%s: %s" % (make_timestamp(t), msg)
         _debug_out.log(msg)
-        
+
+def make_timestamp(t=None):
+    if t is None:   
+        t = datetime.datetime.now()
+    elif isinstance(t, (int, float)):
+        t = datetime.datetime.fromtimestamp(t)
+    return t.strftime("%m/%d/%Y %H:%M:%S") + ".%03d" % (t.microsecond//1000)
+
+
 class Debugged(object):
     
     def __init__(self, my_name=None, send_to=None, save_in_memory=False, add_timestamps=False, enabled=True):

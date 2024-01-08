@@ -448,9 +448,9 @@ class RecordDatabase(PyThread, Debugged):
         
     def run(self):
         scheduler = Scheduler()
-        scheduler.add(self._flush,  self.SaveInterval)
-        scheduler.add(self._cleanup, 24*3600)
-        scheduler.add(self._vacuum, 24*3600)                  # once per day
+        scheduler.add(self._flush, interval=self.SaveInterval)
+        scheduler.add(self._cleanup, interval=24*3600)
+        scheduler.add(self._vacuum, interval=24*3600)                  # once per day
         scheduler.start()
         scheduler.join()
       

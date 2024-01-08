@@ -34,12 +34,12 @@ class Transfer(Task, Debugged, Logged):
             host, port = address
             if probe:
                     url = "http://%s:%s%s" % (host, port, probe)
-                    self.debug("Trying probe: %s, probe_timeout=%s" % (url,self.Service.ProbeTimeout))
+                    #self.debug("Trying probe: %s, probe_timeout=%s" % (url,self.Service.ProbeTimeout))
                     try:    urlopen(url, None, self.Service.ProbeTimeout)
                     except:
                         exctype, excvalue = sys.exc_info()[:2]
-                        self.debug("probe failed: %s, probe_timeout: %s, error:%s %s" % (
-                                url, self.Service.ProbeTimeout, exctype, excvalue))    
+                        #self.debug("probe failed: %s, probe_timeout: %s, error:%s %s" % (
+                        #        url, self.Service.ProbeTimeout, exctype, excvalue))    
                         server_list.mark_bad(server)
                         continue
 
@@ -58,7 +58,7 @@ class Transfer(Task, Debugged, Logged):
             server_list.allocate(server)
             return s, server
         else:
-            self.debug("can not find available server")
+            #self.debug("can not find available server")
             return None, None
 
     def run(self):
@@ -145,6 +145,7 @@ class Service(Primitive, Debugged, Logged):
         self.RewriteURI = None  # see note about URL rewriting  # rewrite_uri   # tuple: ("old_head", "new_head") or None
         self.Manager = mgr
         self.MaxConnections = max_connections
+        self.MaxFrequency = max_frequency
         self.Backlog = backlog
 
         stagger = 1.0/max_frequency if max_frequency else None
@@ -159,8 +160,8 @@ class Service(Primitive, Debugged, Logged):
         self.ProbeTimeout = probe_timeout
         self.TransferTimeout = transfer_timeout
         if self.TransferTimeout != None:  self.TransferTimeout = float(self.TransferTimeout)
-        self.debug("Service created: %s, %s, %s, pt=%s, tt=%s, %s" % 
-                (name, max_connections, probe, probe_timeout, self.TransferTimeout, servers))
+        #self.debug("Service created: %s, %s, %s, pt=%s, tt=%s, %s" % 
+        #        (name, max_connections, probe, probe_timeout, self.TransferTimeout, servers))
         self.Access = access
         self.RemovePrefix = remove_prefix
         self.AddPrefix = add_prefix
@@ -404,7 +405,7 @@ class Service(Primitive, Debugged, Logged):
         request.TransferEndTime = task.Ended
         self.requestEnded(request)
         rid = request.Id
-        self.debug(f"{rid} transfer ended")
+        #self.debug(f"{rid} transfer ended")
             
     def taskFailed(self, queue, task, exc_type, exc_value, tb):
         request = task.Request

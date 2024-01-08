@@ -9,11 +9,12 @@
         <th rowspan=2>Service</th>
         <th rowspan=2>Server ports</th>
         <th rowspan=2>Match</th>
-        <th rowspan=2>Active Connections</th>
+        <th rowspan=2>Active connections</th>
         <th rowspan=2>Queue</th>
         <th colspan=3>Processing time</th>
         <th colspan=3>Wait time</th>
-        <th colspan=3>Request Counts</th>
+        <th rowspan=2>Max frequency</th>
+        <th colspan=3>Request counts</th>
         <th rowspan=2>Servers</th>
         <th rowspan=2>Probe</th>
         <th rowspan=2>Timeout</th>
@@ -37,6 +38,7 @@
             <td class=left>{{s.currentQueueWaitTime()|pretty_time}}</td>
             <td class=none>{{s.AvgWaitT|pretty_time}}</td>
             <td class=right>{{s.MaxWaitT|pretty_time}}</td>
+            <td>{{s.MaxFrequency or ''}}</td>
             <td class=left>{{s.f1|pretty_frequency}}</td>
             <td class=none>{{s.f2|pretty_frequency}}</td>
             <td class=right>{{s.f3|pretty_frequency}}</td>
